@@ -1,0 +1,25 @@
+Title: Security Deposits and Return of Deposit (India - general tenancy principles)
+
+A security deposit (also called an advance or caution deposit) is money paid by a
+tenant to a landlord at the start of a tenancy as security against damage to the
+property or unpaid rent. Rules vary by state under each state's Rent Control Act
+or the Model Tenancy Act, 2021 (where adopted), but common principles are:
+
+- The deposit amount is agreed between landlord and tenant, often capped by state
+  law or the rent agreement (many states/model tenancy frameworks suggest a cap of
+  around 2 months' rent for unfurnished properties and up to about 6 months for
+  furnished properties, though local law and the specific agreement control).
+- The landlord must return the deposit within a reasonable period after the tenant
+  vacates, after deducting reasonable, documented costs for unpaid rent or damage
+  beyond normal wear and tear. Many tenancy agreements or state frameworks specify
+  a return period (commonly 30 to 90 days).
+- Normal wear and tear (fading paint, minor scuffs) generally cannot be deducted
+  from the deposit; the landlord should provide an itemized account of any
+  deductions.
+- If a landlord unreasonably withholds a deposit, a tenant can send a written
+  demand letter, approach the Rent Authority / Rent Court set up under the
+  applicable state Rent Act or the Model Tenancy Act (where in force), or pursue
+  the matter in the appropriate civil/consumer forum.
+
+This is general information; the exact cap, return period, and forum depend on
+the specific state's tenancy law and the terms of the signed rental agreement.
