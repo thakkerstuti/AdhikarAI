@@ -97,6 +97,7 @@ Backend Handler → Native App
 
 ## 3. What Changed In This Step
 
+### Milestone 1: AI Layer Core Architecture
 - **Files Created:**
   - `backend/src/ai/contracts.js`
   - `backend/src/ai/prompts.js`
@@ -107,9 +108,15 @@ Backend Handler → Native App
   - `backend/src/ai/index.js`
   - `backend/src/ai/test/askLegalAssistant.test.js`
   - `backend/src/ai/AI_LAYER_LEARNING.md`
-- **What Was Added:** Created local learning document `AI_LAYER_LEARNING.md` for technical mentoring, architectural map, data flow diagrams, security decisions, and grounding rules.
-- **Why It Was Needed:** To provide a comprehensive, beginner-friendly mentor guide explaining every file, decision, risk, and testing procedure in the AI layer.
-- **What Problem It Prevents:** Prevents confusion about file responsibilities, data flow, security boundaries, and RAG grounding mechanics.
+- **What Was Added:** AI Layer core codebase supporting Nova 2 Lite, Bedrock KB vector search, real citation extraction, score threshold grounding, and deterministic mock mode.
+
+### Milestone 2: Wiring Backend `/ask` Endpoint in Mock Mode
+- **Files Created:**
+  - `backend/src/handlers/ask.js`
+  - `backend/src/handlers/test/askHandler.test.js`
+- **What Was Added:** Created Lambda handler `src/handlers/ask.js` bridging API Gateway POST `/ask` events to `askLegalAssistant` in `USE_MOCK_AI=true` mode. Added unit test suite for HTTP status codes, CORS headers, JSON parsing, and response contract compliance.
+- **Why It Was Needed:** To allow frontend native app developers and backend infrastructure teammates to test the live API Gateway HTTP integration end-to-end against the finalized response contract with zero AWS costs or Bedrock dependencies.
+- **What Problem It Prevents:** Prevents API contract integration breaks between native app and backend, catches bad HTTP payloads early, and guarantees CORS compliance.
 
 ---
 
