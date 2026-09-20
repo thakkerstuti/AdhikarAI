@@ -56,7 +56,14 @@ async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promi
   const res = await fetch(url, { ...options, headers });
   if (!res.ok) {
     const errorText = await res.text().catch(() => "");
-    throw new Error(`API Error ${res.status} on ${endpoint}: ${errorText || res.statusText}`);
+    let cleanMessage = errorText;
+    try {
+      const parsed = JSON.parse(errorText);
+      if (parsed.error) cleanMessage = parsed.error;
+    } catch {
+      // keep raw error text
+    }
+    throw new Error(cleanMessage || `API Error ${res.status} on ${endpoint}`);
   }
   return res.json() as Promise<T>;
 }
@@ -901,3 +908,161 @@ Regards,
 function labelize(key: string): string {
   return key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
 }
+
+// ─── Authentication API Wrappers (Phase 10 Demo Email OTP) ─────────────────────
+
+export interface AuthResponse {
+  success?: boolean;
+  message?: string;
+  error?: string;
+  email?: string;
+  requiresOtp?: boolean;
+  remainingAttempts?: number;
+  cooldownRemaining?: number;
+  user?: {
+    id?: string;
+    email: string;
+    name: string;
+    isVerified: boolean;
+  };
+}
+
+/**
+ * Register a new user and trigger email OTP verification.
+ * POST /auth/signup
+ */
+export async function signUpUser(data: {
+  name: string;
+  email: string;
+  password: string;
+}): Promise<AuthResponse> {
+  if (!API_BASE_URL) {
+    return {
+      success: true,
+      message: "Verification code sent to your email.",
+      email: data.email,
+      requiresOtp: true,
+    };
+  }
+
+  return apiRequest<AuthResponse>("/auth/signup", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Verify 6-digit OTP code for signup or password reset.
+ * POST /auth/verify-otp
+ */
+export async function verifyOtpCode(data: {
+  email: string;
+  otp: string;
+  purpose?: "SIGNUP" | "RESET_PASSWORD";
+}): Promise<AuthResponse> {
+  if (!API_BASE_URL) {
+    return {
+      success: true,
+      message: "Email verified successfully.",
+      user: {
+        email: data.email,
+        name: data.email.split("@")[0] || "Citizen",
+        isVerified: true,
+      },
+    };
+  }
+
+  return apiRequest<AuthResponse>("/auth/verify-otp", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Request a fresh 6-digit OTP code (subject to 60s cooldown).
+ * POST /auth/resend-otp
+ */
+export async function resendOtpCode(data: {
+  email: string;
+  purpose?: "SIGNUP" | "RESET_PASSWORD";
+}): Promise<AuthResponse> {
+  if (!API_BASE_URL) {
+    return {
+      success: true,
+      message: "A new verification code has been sent.",
+    };
+  }
+
+  return apiRequest<AuthResponse>("/auth/resend-otp", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Sign in existing user with email and password.
+ * POST /auth/signin
+ */
+export async function signInUser(data: {
+  email: string;
+  password: string;
+}): Promise<AuthResponse> {
+  if (!API_BASE_URL) {
+    return {
+      success: true,
+      message: "Signed in successfully.",
+      user: {
+        email: data.email,
+        name: data.email.split("@")[0] || "User",
+        isVerified: true,
+      },
+    };
+  }
+
+  return apiRequest<AuthResponse>("/auth/signin", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Request a password reset OTP code.
+ * POST /auth/forgot-password
+ */
+export async function forgotPasswordRequest(data: { email: string }): Promise<AuthResponse> {
+  if (!API_BASE_URL) {
+    return {
+      success: true,
+      message: "Password reset code sent to your email.",
+      email: data.email,
+    };
+  }
+
+  return apiRequest<AuthResponse>("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Reset password using OTP code and new password.
+ * POST /auth/reset-password
+ */
+export async function resetPasswordWithOtp(data: {
+  email: string;
+  otp: string;
+  newPassword: string;
+}): Promise<AuthResponse> {
+  if (!API_BASE_URL) {
+    return {
+      success: true,
+      message: "Password reset successfully.",
+    };
+  }
+
+  return apiRequest<AuthResponse>("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+

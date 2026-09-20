@@ -22,6 +22,15 @@ Parameters:
     Type: String
     Default: "true"
     Description: "Set to false to engage live Amazon Bedrock models; true to use offline mock AI"
+  ResendApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: API Key for Resend Email Service
+  ResendFromEmail:
+    Type: String
+    Default: "AdhikarAI <onboarding@resend.dev>"
+    Description: Sender email address configured in Resend
 
 Globals:
   Function:
@@ -36,6 +45,8 @@ Globals:
         MODEL_ID: !Ref BedrockModelId
         FAST_MODEL_ID: !Ref BedrockFastModelId
         USE_MOCK_AI: !Ref UseMockAi
+        RESEND_API_KEY: !Ref ResendApiKey
+        RESEND_FROM_EMAIL: !Ref ResendFromEmail
         AWS_REGION: !Ref "AWS::Region"
 
 Resources:
@@ -70,6 +81,9 @@ Resources:
           KeyType: HASH
         - AttributeName: sk
           KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
 
   Api:
     Type: AWS::Serverless::Api
@@ -276,6 +290,33 @@ Resources:
           Type: Api
           Properties: { Path: /session/{sessionId}, Method: get, RestApiId: !Ref Api }
 
+  AuthFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/auth.handler
+      CodeUri: .
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+      Events:
+        Signup:
+          Type: Api
+          Properties: { Path: /auth/signup, Method: post, RestApiId: !Ref Api }
+        VerifyOtp:
+          Type: Api
+          Properties: { Path: /auth/verify-otp, Method: post, RestApiId: !Ref Api }
+        ResendOtp:
+          Type: Api
+          Properties: { Path: /auth/resend-otp, Method: post, RestApiId: !Ref Api }
+        Signin:
+          Type: Api
+          Properties: { Path: /auth/signin, Method: post, RestApiId: !Ref Api }
+        ForgotPassword:
+          Type: Api
+          Properties: { Path: /auth/forgot-password, Method: post, RestApiId: !Ref Api }
+        ResetPassword:
+          Type: Api
+          Properties: { Path: /auth/reset-password, Method: post, RestApiId: !Ref Api }
+
 Outputs:
   ApiUrl:
     Description: Base URL for the API Gateway dev stage
@@ -284,6 +325,9 @@ Outputs:
     Value: !Ref AppBucket
   TableName:
     Value: !Ref SessionsTable
+  AuthEndpoint:
+    Description: Demo email OTP authentication endpoints
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/dev/auth"
   UploadAudioEndpoint:
     Description: POST /upload/audio — get a presigned S3 PUT URL for audio recording
     Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/dev/upload/audio"
