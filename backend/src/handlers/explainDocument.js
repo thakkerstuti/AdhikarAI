@@ -1,6 +1,5 @@
 import { extractTextFromS3 } from "../lib/textractHelper.js";
-import { invokeJson } from "../lib/bedrockClient.js";
-import { buildDocumentExplainPrompt } from "../lib/promptTemplate.js";
+import { explainDocument } from "../lib/aiService.js";
 import { getItem, putItem } from "../lib/dynamo.js";
 import { ok, fail } from "../lib/response.js";
 
@@ -14,7 +13,7 @@ export const handler = async (event) => {
     if (!docItem) return fail(new Error("Document not found for this session"), 404);
 
     const extractedText = await extractTextFromS3(docItem.s3Key);
-    const summary = await invokeJson(buildDocumentExplainPrompt(extractedText, lang));
+    const summary = await explainDocument(extractedText, lang);
 
     await putItem({ ...docItem, status: "explained", extractedText, summary });
 

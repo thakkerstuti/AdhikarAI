@@ -1,6 +1,5 @@
 import { v4 as uuid } from "uuid";
-import { invokeText } from "../lib/bedrockClient.js";
-import { buildLetterPrompt } from "../lib/promptTemplate.js";
+import { generateLetter } from "../lib/aiService.js";
 import { LETTER_TYPES } from "../../letters/templates.js";
 import { putTextObject, presignedDownloadUrl } from "../lib/s3.js";
 import { putItem } from "../lib/dynamo.js";
@@ -12,7 +11,7 @@ export const handler = async (event) => {
     if (!sessionId || !letterType) return fail(new Error("sessionId and letterType are required"), 400);
     if (!LETTER_TYPES[letterType]) return fail(new Error(`Unknown letterType. Valid: ${Object.keys(LETTER_TYPES).join(", ")}`), 400);
 
-    const letterText = await invokeText(buildLetterPrompt(letterType, lang, details));
+    const letterText = await generateLetter(letterType, lang, details);
 
     const letterId = uuid();
     const s3Key = `generated/${sessionId}/letters/${letterId}.txt`;

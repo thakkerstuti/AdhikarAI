@@ -11,6 +11,7 @@ const KEYS = {
   ONBOARDING_DONE: "adhikar_onboarding_completed",
   USER_PROFILE: "adhikar_user_profile",
   SELECTED_LANG: "adhikar_selected_language",
+  SESSION_ID: "adhikar_session_id",
 };
 
 export const storage = {
@@ -70,6 +71,30 @@ export const storage = {
       localStorage.setItem(KEYS.SELECTED_LANG, lang);
     } catch (e) {
       console.error("Failed to save language preference", e);
+    }
+  },
+
+  getSessionId: (): string | null => {
+    try {
+      return localStorage.getItem(KEYS.SESSION_ID);
+    } catch {
+      return null;
+    }
+  },
+
+  setSessionId: (sessionId: string): void => {
+    try {
+      localStorage.setItem(KEYS.SESSION_ID, sessionId);
+    } catch (e) {
+      console.error("Failed to save session ID", e);
+    }
+  },
+
+  clearSessionId: (): void => {
+    try {
+      localStorage.removeItem(KEYS.SESSION_ID);
+    } catch (e) {
+      console.error("Failed to clear session ID", e);
     }
   },
 };
