@@ -1,15 +1,15 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  Voice-First Legal Rights Helper - MVP backend.
-  The Bedrock Knowledge Base and its OpenSearch Serverless vector store are
-  created manually via the Bedrock console (fastest path for a 4-day build)
-  and passed in here as a parameter - see README "Day 1 setup".
+  Voice-First Legal Rights Helper (AdhikarAI) - MVP Backend.
+  Provides API Gateway endpoints, Lambda functions, DynamoDB session storage,
+  and AWS integrations (S3, Transcribe, Textract, Polly, Bedrock).
 
 Parameters:
   BedrockKnowledgeBaseId:
     Type: String
     Description: ID of the Bedrock Knowledge Base created in the console
+    Default: "mock-kb-id"
   BedrockModelId:
     Type: String
     Default: anthropic.claude-3-5-sonnet-20240620-v1:0
@@ -18,6 +18,19 @@ Parameters:
     Type: String
     Default: anthropic.claude-3-5-haiku-20241022-v1:0
     Description: Faster/cheaper model for lighter tasks (document Q&A follow-ups)
+  UseMockAi:
+    Type: String
+    Default: "true"
+    Description: "Set to false to engage live Amazon Bedrock models; true to use offline mock AI"
+  ResendApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: API Key for Resend Email Service
+  ResendFromEmail:
+    Type: String
+    Default: "AdhikarAI <onboarding@resend.dev>"
+    Description: Sender email address configured in Resend
 
 Globals:
   Function:
@@ -31,6 +44,10 @@ Globals:
         KB_ID: !Ref BedrockKnowledgeBaseId
         MODEL_ID: !Ref BedrockModelId
         FAST_MODEL_ID: !Ref BedrockFastModelId
+        USE_MOCK_AI: !Ref UseMockAi
+        RESEND_API_KEY: !Ref ResendApiKey
+        RESEND_FROM_EMAIL: !Ref ResendFromEmail
+        AWS_REGION: !Ref "AWS::Region"
 
 Resources:
 
@@ -40,7 +57,7 @@ Resources:
       BucketName: !Sub "legal-helper-${AWS::AccountId}-${AWS::Region}"
       CorsConfiguration:
         CorsRules:
-          - AllowedMethods: [GET, PUT, POST]
+          - AllowedMethods: [GET, PUT, POST, DELETE, HEAD]
             AllowedOrigins: ["*"]
             AllowedHeaders: ["*"]
       PublicAccessBlockConfiguration:
@@ -64,14 +81,17 @@ Resources:
           KeyType: HASH
         - AttributeName: sk
           KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
 
   Api:
     Type: AWS::Serverless::Api
     Properties:
       StageName: dev
       Cors:
-        AllowMethods: "'GET,POST,OPTIONS'"
-        AllowHeaders: "'Content-Type'"
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,x-session-id'"
         AllowOrigin: "'*'"
 
   CreateSessionFn:
@@ -207,11 +227,116 @@ Resources:
           Type: Api
           Properties: { Path: /speak, Method: post, RestApiId: !Ref Api }
 
+  UploadAudioFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/uploadAudio.handler
+      CodeUri: .
+      Policies:
+        - S3CrudPolicy: { BucketName: !Ref AppBucket }
+      Events:
+        Api:
+          Type: Api
+          Properties: { Path: /upload/audio, Method: post, RestApiId: !Ref Api }
+
+  CasesFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/cases.handler
+      CodeUri: .
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+      Events:
+        CreateCase:
+          Type: Api
+          Properties: { Path: /cases, Method: post, RestApiId: !Ref Api }
+        ListCases:
+          Type: Api
+          Properties: { Path: /cases, Method: get, RestApiId: !Ref Api }
+        GetCase:
+          Type: Api
+          Properties: { Path: /cases/{caseId}, Method: get, RestApiId: !Ref Api }
+
+  RemindersFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/reminders.handler
+      CodeUri: .
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+      Events:
+        CreateReminder:
+          Type: Api
+          Properties: { Path: /reminders, Method: post, RestApiId: !Ref Api }
+        ListReminders:
+          Type: Api
+          Properties: { Path: /reminders, Method: get, RestApiId: !Ref Api }
+        UpdateReminder:
+          Type: Api
+          Properties: { Path: /reminders/{reminderId}, Method: put, RestApiId: !Ref Api }
+        DeleteReminder:
+          Type: Api
+          Properties: { Path: /reminders/{reminderId}, Method: delete, RestApiId: !Ref Api }
+
+  GetSessionFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/getSession.handler
+      CodeUri: .
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+      Events:
+        Api:
+          Type: Api
+          Properties: { Path: /session/{sessionId}, Method: get, RestApiId: !Ref Api }
+
+  AuthFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/auth.handler
+      CodeUri: .
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+      Events:
+        Signup:
+          Type: Api
+          Properties: { Path: /auth/signup, Method: post, RestApiId: !Ref Api }
+        VerifyOtp:
+          Type: Api
+          Properties: { Path: /auth/verify-otp, Method: post, RestApiId: !Ref Api }
+        ResendOtp:
+          Type: Api
+          Properties: { Path: /auth/resend-otp, Method: post, RestApiId: !Ref Api }
+        Signin:
+          Type: Api
+          Properties: { Path: /auth/signin, Method: post, RestApiId: !Ref Api }
+        ForgotPassword:
+          Type: Api
+          Properties: { Path: /auth/forgot-password, Method: post, RestApiId: !Ref Api }
+        ResetPassword:
+          Type: Api
+          Properties: { Path: /auth/reset-password, Method: post, RestApiId: !Ref Api }
+
 Outputs:
   ApiUrl:
-    Description: Base URL for the API
+    Description: Base URL for the API Gateway dev stage
     Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/dev"
   BucketName:
     Value: !Ref AppBucket
   TableName:
     Value: !Ref SessionsTable
+  AuthEndpoint:
+    Description: Demo email OTP authentication endpoints
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/dev/auth"
+  UploadAudioEndpoint:
+    Description: POST /upload/audio — get a presigned S3 PUT URL for audio recording
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/dev/upload/audio"
+  CasesEndpoint:
+    Description: GET/POST /cases — list, get, or create tracked legal cases
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/dev/cases"
+  RemindersEndpoint:
+    Description: GET/POST/PUT/DELETE /reminders — full reminder CRUD
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/dev/reminders"
+  GetSessionEndpoint:
+    Description: GET /session/{sessionId} — retrieve full session state
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/dev/session/{sessionId}"

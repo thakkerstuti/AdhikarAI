@@ -6,67 +6,182 @@ import VoiceButton from "@/components/VoiceButton";
 import LegalAnswer from "@/components/LegalAnswer";
 import Skeleton from "@/components/ui/Skeleton";
 import Button from "@/components/ui/Button";
-import { askQuestion, speakAnswer } from "@/services/api";
+import { voiceQuery, speakAnswer } from "@/services/api";
+import { storage } from "@/utils/storage";
 import { LegalAnswerData, VoiceState } from "@/types";
-
-const MOCK_TRANSCRIPT_STEPS = [
-  "My landlord",
-  "My landlord hasn't",
-  "My landlord hasn't returned",
-  "My landlord hasn't returned my security",
-  "My landlord hasn't returned my security deposit after I moved out.",
-];
 
 export default function Voice() {
   const navigate = useNavigate();
   const [state, setState] = useState<VoiceState>("ready");
   const [transcript, setTranscript] = useState("");
   const [answer, setAnswer] = useState<LegalAnswerData | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const timers = useRef<number[]>([]);
 
-  useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), []);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
-  function startListening() {
-    setState("listening");
-    setTranscript("");
-    setAnswer(null);
-    setError(null);
-    MOCK_TRANSCRIPT_STEPS.forEach((step, i) => {
-      const t = window.setTimeout(() => setTranscript(step), 500 * (i + 1));
-      timers.current.push(t);
-    });
+  // Cleanup active audio tracks and recorders on unmount
+  useEffect(() => {
+    return () => {
+      stopMediaTracks();
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+      }
+    };
+  }, []);
+
+  function stopMediaTracks() {
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+    mediaRecorderRef.current = null;
   }
 
-  async function stopAndProcess() {
-    setState("processing");
+  async function startListening() {
+    setError(null);
+    setTranscript("");
+    setAnswer(null);
+    setAudioUrl(null);
+    audioChunksRef.current = [];
+
+    // Check browser support for MediaDevices
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setError("Audio recording is not supported in this browser. Please try another browser or use text search.");
+      setState("error");
+      return;
+    }
+
     try {
-      const fallback = MOCK_TRANSCRIPT_STEPS[MOCK_TRANSCRIPT_STEPS.length - 1];
-      const result = await askQuestion(transcript || fallback, "en");
-      setAnswer(result);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+
+      let mimeType = "";
+      if (typeof MediaRecorder.isTypeSupported === "function") {
+        if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+          mimeType = "audio/webm;codecs=opus";
+        } else if (MediaRecorder.isTypeSupported("audio/webm")) {
+          mimeType = "audio/webm";
+        } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+          mimeType = "audio/mp4";
+        } else if (MediaRecorder.isTypeSupported("audio/ogg")) {
+          mimeType = "audio/ogg";
+        }
+      }
+
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        stopMediaTracks();
+        await processRecordedAudio(recorder.mimeType || "audio/webm");
+      };
+
+      recorder.start(250);
+      setState("listening");
+    } catch (err: unknown) {
+      console.error("[Voice] Microphone access error:", err);
+      const isPermissionDenied =
+        err instanceof DOMException &&
+        (err.name === "NotAllowedError" || err.name === "PermissionDeniedError");
+
+      if (isPermissionDenied) {
+        setError("Microphone permission was denied. Please allow microphone access in your browser settings to ask by voice.");
+      } else {
+        setError("Could not access microphone. Please check your audio input settings.");
+      }
+      setState("error");
+    }
+  }
+
+  function stopListening() {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      setState("processing");
+      mediaRecorderRef.current.stop();
+    }
+  }
+
+  async function processRecordedAudio(mimeType: string) {
+    setState("processing");
+
+    if (audioChunksRef.current.length === 0) {
+      setError("No audio was recorded. Please tap the microphone and speak again.");
+      setState("error");
+      return;
+    }
+
+    try {
+      const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+      const selectedLang = storage.getSelectedLanguage();
+
+      const result = await voiceQuery(audioBlob, selectedLang);
+      setTranscript(result.transcript);
+      setAnswer(result.answer);
+      setAudioUrl(result.audioUrl);
       setState("answer");
-    } catch {
+
+      // Automatically play synthesized answer if audio is available
+      if (result.audioUrl) {
+        try {
+          const audio = new Audio(result.audioUrl);
+          audioPlayerRef.current = audio;
+          audio.play().catch(() => {
+            // Autoplay policy may restrict immediate playback; user can still click Listen
+          });
+        } catch {
+          // ignore autoplay restrictions
+        }
+      }
+    } catch (err: unknown) {
+      console.error("[Voice] Processing failed:", err);
       setError("Something went wrong understanding that. Please try again.");
       setState("error");
     }
   }
 
   function handleMicClick() {
-    if (state === "ready" || state === "error") startListening();
-    else if (state === "listening") stopAndProcess();
+    if (state === "ready" || state === "error") {
+      startListening();
+    } else if (state === "listening") {
+      stopListening();
+    }
   }
 
   function reset() {
-    timers.current.forEach((t) => window.clearTimeout(t));
+    stopMediaTracks();
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+    }
     setState("ready");
     setTranscript("");
     setAnswer(null);
+    setAudioUrl(null);
     setError(null);
   }
 
   async function handleListen() {
-    if (!answer) return;
-    await speakAnswer(answer.whatThisMeans, "en");
+    if (audioUrl) {
+      try {
+        const audio = new Audio(audioUrl);
+        audioPlayerRef.current = audio;
+        await audio.play();
+        return;
+      } catch {
+        // Fallback to synthesize call below
+      }
+    }
+    if (answer) {
+      await speakAnswer(answer.whatThisMeans, storage.getSelectedLanguage());
+    }
   }
 
   return (
@@ -88,7 +203,7 @@ export default function Voice() {
             {state === "listening" && (
               <div className="w-full rounded-xl2 border border-line bg-card p-4 min-h-[4rem]">
                 <p className="text-sm leading-relaxed">
-                  {transcript || <span className="text-muted">…</span>}
+                  {transcript || <span className="text-muted">Listening for speech…</span>}
                 </p>
               </div>
             )}

@@ -4,6 +4,7 @@
   "type": "module",
   "description": "Lambda backend for the Voice-First Legal Rights Helper MVP",
   "scripts": {
+    "test": "node --test test/*.test.js",
     "build": "sam build",
     "deploy": "sam deploy --guided"
   },
