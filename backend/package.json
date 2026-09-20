@@ -17,6 +17,7 @@
     "@aws-sdk/client-transcribe": "^3.635.0",
     "@aws-sdk/lib-dynamodb": "^3.635.0",
     "@aws-sdk/s3-request-presigner": "^3.635.0",
+    "@google/genai": "^2.23.0",
     "uuid": "^9.0.1"
   }
 }

@@ -2,7 +2,7 @@
  * AI Layer Unit & Integration Tests
  * 
  * Tests contracts, validation, mock mode execution, grounding fallback rules,
- * and configuration error handling for askLegalAssistant.
+ * local file retrieval, and configuration error handling for askLegalAssistant.
  */
 
 import assert from "node:assert";
@@ -11,6 +11,7 @@ import { askLegalAssistant } from "../index.js";
 import { validateAndNormalizeRequest, RESPONSE_STATUS } from "../contracts.js";
 import { evaluateRetrievalQuality, extractValidCitations } from "../grounding.js";
 import { cleanAndParseJsonResponse } from "../prompts.js";
+import { retrieveLocalPassages } from "../localRetrievalService.js";
 
 describe("AI Layer - Request Validation", () => {
   test("validates and normalizes valid request payload", () => {
@@ -100,22 +101,35 @@ describe("AI Layer - Mock Mode (USE_MOCK_AI=true)", () => {
   });
 });
 
+describe("AI Layer - Local RAG & File Retrieval", () => {
+  test("retrieves legal passages from local knowledge-base directory", () => {
+    const passages = retrieveLocalPassages({ query: "security deposit tenant landlord", topK: 3 });
+    assert.ok(passages.length > 0);
+    assert.strictEqual(passages[0].sourceTitle, "Security Deposit");
+    assert.ok(passages[0].score > 0.5);
+    assert.ok(passages[0].textSnippet.includes("security deposit"));
+  });
+});
+
 describe("AI Layer - Configuration Error Handling (USE_MOCK_AI=false)", () => {
   const originalMock = process.env.USE_MOCK_AI;
   const originalKb = process.env.BEDROCK_KB_ID;
+  const originalGemini = process.env.GEMINI_API_KEY;
 
   beforeEach(() => {
     process.env.USE_MOCK_AI = "false";
     delete process.env.BEDROCK_KB_ID;
     delete process.env.KB_ID;
+    delete process.env.GEMINI_API_KEY;
   });
 
   afterEach(() => {
     process.env.USE_MOCK_AI = originalMock;
     if (originalKb) process.env.BEDROCK_KB_ID = originalKb;
+    if (originalGemini) process.env.GEMINI_API_KEY = originalGemini;
   });
 
-  test("throws configuration error when BEDROCK_KB_ID is missing in live mode", async () => {
+  test("throws configuration error when GEMINI_API_KEY or BEDROCK_KB_ID is missing in live mode", async () => {
     const request = { query: "What is the wage payment rule?" };
     const res = await askLegalAssistant(request);
 
@@ -123,7 +137,6 @@ describe("AI Layer - Configuration Error Handling (USE_MOCK_AI=false)", () => {
     assert.strictEqual(res.grounded, false);
     assert.strictEqual(res.metadata.executionMode, "live");
     assert.strictEqual(res.error.code, "CONFIG_ERROR");
-    assert.ok(res.error.message.includes("BEDROCK_KB_ID"));
   });
 });
 

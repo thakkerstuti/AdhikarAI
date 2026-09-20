@@ -3,7 +3,7 @@
  * 
  * Public API exposing askLegalAssistant.
  * Manages request validation, mock/live mode routing, RAG retrieval evaluation,
- * Nova 2 Lite grounded generation, non-hallucinated citation extraction, and fallback handling.
+ * Gemini 1.5 Flash grounded generation, non-hallucinated citation extraction, and fallback handling.
  */
 
 import {
@@ -15,8 +15,10 @@ import {
   ConfigurationError,
 } from "./contracts.js";
 import { askLegalAssistantMock } from "./mockAiService.js";
-import { getValidatedConfig, invokeNovaModel } from "./bedrockClient.js";
+import { getValidatedGeminiConfig, invokeGeminiModel } from "./geminiClient.js";
+import { getValidatedConfig as getValidatedBedrockConfig, invokeNovaModel } from "./bedrockClient.js";
 import { retrieveKnowledgePassages } from "./retrievalService.js";
+import { retrieveLocalPassages } from "./localRetrievalService.js";
 import { evaluateRetrievalQuality, extractValidCitations } from "./grounding.js";
 import { buildSystemPrompt, buildUserPrompt, cleanAndParseJsonResponse } from "./prompts.js";
 
@@ -53,52 +55,86 @@ export async function askLegalAssistant(requestPayload) {
     return askLegalAssistantMock(normalizedRequest);
   }
 
-  // 3. Live Bedrock Integration Mode
+  // 3. Live AI Execution Mode (Google Gemini API or Bedrock)
   try {
-    // Validate environmental configuration (throws ConfigurationError if live config is missing)
-    getValidatedConfig();
+    const isGeminiMode = Boolean(process.env.GEMINI_API_KEY || process.env.AI_PROVIDER === "gemini");
 
-    // Stage 1: Vector Retrieval from Bedrock KB
-    const retrievedPassages = await retrieveKnowledgePassages({
-      query: normalizedRequest.query,
-      topK: normalizedRequest.options.topK,
-    });
+    let retrievedPassages = [];
+    let rawModelOutput = "";
 
-    // Stage 2: Grounding Evaluation & Weak Retrieval Guard
-    const groundingEvaluation = evaluateRetrievalQuality(retrievedPassages);
+    if (isGeminiMode) {
+      // Live Google Gemini 1.5 Flash + Local RAG Mode
+      getValidatedGeminiConfig();
 
-    if (!groundingEvaluation.isGrounded) {
-      // Weak or missing retrieval -> Return fallback response (Zero Hallucination)
-      return buildFallbackResponse({
-        reason: groundingEvaluation.reason || "WEAK_RETRIEVAL",
-        message: "Retrieval score below threshold or no matching knowledge base passages found.",
-        executionMode: "live",
+      retrievedPassages = retrieveLocalPassages({
+        query: normalizedRequest.query,
+        topK: normalizedRequest.options.topK,
+      });
+
+      const groundingEvaluation = evaluateRetrievalQuality(retrievedPassages);
+      if (!groundingEvaluation.isGrounded) {
+        return buildFallbackResponse({
+          reason: groundingEvaluation.reason || "WEAK_RETRIEVAL",
+          message: "Retrieval score below threshold or no matching knowledge base passages found.",
+          executionMode: "live",
+          confidenceScore: groundingEvaluation.topScore,
+        });
+      }
+
+      const systemPrompt = buildSystemPrompt(normalizedRequest.language);
+      const userPrompt = buildUserPrompt(normalizedRequest.query, retrievedPassages);
+
+      rawModelOutput = await invokeGeminiModel({
+        systemPrompt,
+        userPrompt,
+      });
+
+      const structuredAnswer = cleanAndParseJsonResponse(rawModelOutput);
+      const citations = extractValidCitations(retrievedPassages);
+
+      return buildAnsweredResponse({
+        answer: structuredAnswer,
+        citations,
         confidenceScore: groundingEvaluation.topScore,
+        executionMode: "live",
+      });
+    } else {
+      // Live Bedrock Mode
+      getValidatedBedrockConfig();
+
+      retrievedPassages = await retrieveKnowledgePassages({
+        query: normalizedRequest.query,
+        topK: normalizedRequest.options.topK,
+      });
+
+      const groundingEvaluation = evaluateRetrievalQuality(retrievedPassages);
+      if (!groundingEvaluation.isGrounded) {
+        return buildFallbackResponse({
+          reason: groundingEvaluation.reason || "WEAK_RETRIEVAL",
+          message: "Retrieval score below threshold or no matching knowledge base passages found.",
+          executionMode: "live",
+          confidenceScore: groundingEvaluation.topScore,
+        });
+      }
+
+      const systemPrompt = buildSystemPrompt(normalizedRequest.language);
+      const userPrompt = buildUserPrompt(normalizedRequest.query, retrievedPassages);
+
+      rawModelOutput = await invokeNovaModel({
+        systemPrompt,
+        userPrompt,
+      });
+
+      const structuredAnswer = cleanAndParseJsonResponse(rawModelOutput);
+      const citations = extractValidCitations(retrievedPassages);
+
+      return buildAnsweredResponse({
+        answer: structuredAnswer,
+        citations,
+        confidenceScore: groundingEvaluation.topScore,
+        executionMode: "live",
       });
     }
-
-    // Stage 3: Grounded Answer Generation via Amazon Nova 2 Lite
-    const systemPrompt = buildSystemPrompt(normalizedRequest.language);
-    const userPrompt = buildUserPrompt(normalizedRequest.query, retrievedPassages);
-
-    const rawModelOutput = await invokeNovaModel({
-      systemPrompt,
-      userPrompt,
-    });
-
-    // Clean & Parse JSON Output
-    const structuredAnswer = cleanAndParseJsonResponse(rawModelOutput);
-
-    // Extract non-hallucinated citations from retrieved passages
-    const citations = extractValidCitations(retrievedPassages);
-
-    // Stage 4: Return Answered Response Contract
-    return buildAnsweredResponse({
-      answer: structuredAnswer,
-      citations,
-      confidenceScore: groundingEvaluation.topScore,
-      executionMode: "live",
-    });
   } catch (err) {
     if (err instanceof ConfigurationError) {
       return buildErrorResponse({
@@ -108,7 +144,6 @@ export async function askLegalAssistant(requestPayload) {
       });
     }
 
-    // Unexpected runtime or Bedrock SDK error
     return buildErrorResponse({
       code: err.code || "AI_EXECUTION_ERROR",
       message: err.message || "An error occurred during AI processing.",

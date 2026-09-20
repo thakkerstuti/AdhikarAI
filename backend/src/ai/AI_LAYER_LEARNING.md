@@ -23,6 +23,16 @@ Here is the role of each file in your AI layer (`backend/src/ai/`):
 - **What it should NOT do:** It should not call live AWS Bedrock SDKs or handle real vector searches.
 - **Talks to:** Called by `index.js` when `USE_MOCK_AI=true`. Uses `contracts.js` to build response shapes.
 
+### `geminiClient.js`
+- **Responsibility:** Connects to Google Gemini 1.5 Flash (`gemini-1.5-flash`) using a simple `GEMINI_API_KEY`. Zero AWS Console or IAM complexity.
+- **What it should NOT do:** It should not handle vector retrieval or score evaluation.
+- **Talks to:** Called by `index.js`.
+
+### `localRetrievalService.js`
+- **Responsibility:** Performs zero-cloud local RAG retrieval by reading text files directly from `backend/knowledge-base/` (`security-deposit-en.txt`, `consumer-complaints-en.txt`, `unpaid-wages-en.txt`) and scoring passage relevance in Node.js memory.
+- **What it should NOT do:** It should not depend on AWS OpenSearch Serverless or remote cloud APIs.
+- **Talks to:** Called by `index.js`.
+
 ### `bedrockClient.js`
 - **Responsibility:** Manages the low-level `@aws-sdk/client-bedrock-runtime` client and executes `ConverseCommand` against Amazon Nova 2 Lite (`amazon.nova-lite-v1:0`). Also validates configuration in live mode.
 - **What it should NOT do:** It should not evaluate vector search scores or decide if a response is grounded.
