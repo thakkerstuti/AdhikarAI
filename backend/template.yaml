@@ -31,6 +31,8 @@ Globals:
         KB_ID: !Ref BedrockKnowledgeBaseId
         MODEL_ID: !Ref BedrockModelId
         FAST_MODEL_ID: !Ref BedrockFastModelId
+        USE_MOCK_AI: "true"
+        AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1"
 
 Resources:
 
@@ -70,8 +72,8 @@ Resources:
     Properties:
       StageName: dev
       Cors:
-        AllowMethods: "'GET,POST,OPTIONS'"
-        AllowHeaders: "'Content-Type'"
+        AllowMethods: "'GET,POST,PUT,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
         AllowOrigin: "'*'"
 
   CreateSessionFn:
@@ -207,11 +209,82 @@ Resources:
           Type: Api
           Properties: { Path: /speak, Method: post, RestApiId: !Ref Api }
 
+  # ─── Phase 3: Audio Upload ────────────────────────────────────────────────
+  UploadAudioFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/uploadAudio.handler
+      CodeUri: .
+      Policies:
+        - S3CrudPolicy: { BucketName: !Ref AppBucket }
+      Events:
+        Api:
+          Type: Api
+          Properties: { Path: /upload/audio, Method: post, RestApiId: !Ref Api }
+
+  # ─── Phase 7: Legal Cases ─────────────────────────────────────────────────
+  CasesFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/cases.handler
+      CodeUri: .
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+      Events:
+        CreateCase:
+          Type: Api
+          Properties: { Path: /cases, Method: post, RestApiId: !Ref Api }
+        ListCases:
+          Type: Api
+          Properties: { Path: /cases, Method: get, RestApiId: !Ref Api }
+
+  # ─── Phase 7: Reminders ───────────────────────────────────────────────────
+  RemindersFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/reminders.handler
+      CodeUri: .
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+      Events:
+        CreateReminder:
+          Type: Api
+          Properties: { Path: /reminders, Method: post, RestApiId: !Ref Api }
+        ListReminders:
+          Type: Api
+          Properties: { Path: /reminders, Method: get, RestApiId: !Ref Api }
+
+  # ─── Phase 8: Session History Retrieval ───────────────────────────────────
+  GetSessionFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/getSession.handler
+      CodeUri: .
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref SessionsTable }
+      Events:
+        Api:
+          Type: Api
+          Properties: { Path: /session/{sessionId}, Method: get, RestApiId: !Ref Api }
+
 Outputs:
   ApiUrl:
-    Description: Base URL for the API
+    Description: Base URL for the API (append /session, /query, etc.)
     Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/dev"
   BucketName:
     Value: !Ref AppBucket
   TableName:
     Value: !Ref SessionsTable
+  # New endpoints added in Phase 9
+  UploadAudioEndpoint:
+    Description: POST  /upload/audio  — get a presigned S3 PUT URL for audio recording
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/dev/upload/audio"
+  CasesEndpoint:
+    Description: GET/POST  /cases  — list or create tracked legal cases
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/dev/cases"
+  RemindersEndpoint:
+    Description: GET/POST  /reminders  — list or create deadline reminders
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/dev/reminders"
+  GetSessionEndpoint:
+    Description: GET  /session/{sessionId}  — retrieve full session history on app load/refresh
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/dev/session/{sessionId}"

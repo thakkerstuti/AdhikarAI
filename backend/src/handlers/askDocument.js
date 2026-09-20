@@ -1,5 +1,4 @@
-import { invokeJson } from "../lib/bedrockClient.js";
-import { buildDocumentAskPrompt } from "../lib/promptTemplate.js";
+import { askDocument } from "../lib/aiService.js";
 import { getItem, putItem } from "../lib/dynamo.js";
 import { ok, fail } from "../lib/response.js";
 
@@ -16,7 +15,7 @@ export const handler = async (event) => {
       return fail(new Error("Document has not been explained yet - call /explain first"), 400);
     }
 
-    const answer = await invokeJson(buildDocumentAskPrompt(docItem.extractedText, question, lang), { fast: true });
+    const answer = await askDocument(docItem.extractedText, question, lang);
 
     await putItem({
       pk: `SESSION#${sessionId}`,

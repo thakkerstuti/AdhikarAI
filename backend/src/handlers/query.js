@@ -1,4 +1,4 @@
-import { groundedAnswer } from "../lib/bedrockClient.js";
+import { groundedAnswer } from "../lib/aiService.js";
 import { putItem } from "../lib/dynamo.js";
 import { ok, fail } from "../lib/response.js";
 
