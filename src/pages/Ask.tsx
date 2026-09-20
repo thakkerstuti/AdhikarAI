@@ -44,32 +44,66 @@ export default function Ask() {
   }
 
   return (
-    <div className="min-h-screen pb-28 flex flex-col">
+    <div className="min-h-screen pb-24 flex flex-col bg-paper">
       <TopBar title="Ask a question" onBack={() => navigate("/")} />
 
-      <div className="flex-1 px-5 pt-2 space-y-5">
+      <div className="flex-1 px-5 pt-3 pb-6 space-y-5 overflow-y-auto">
         {messages.length === 0 && !sending && (
-          <p className="text-sm text-muted text-center pt-10">
-            Describe what happened. We'll explain what it means and what you can do next.
-          </p>
+          <div className="space-y-6 pt-4">
+            <div className="text-center space-y-2">
+              <p className="text-base font-semibold text-ink">What is your legal question?</p>
+              <p className="text-sm text-muted">
+                Describe your situation in detail. We'll explain your rights, legal remedies, and exact next steps.
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted">Common Topics</p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  "Landlord refuses to refund security deposit",
+                  "Employer delayed salary payment",
+                  "Defective product return refund refusal",
+                  "Police harassment or illegal search rights",
+                ].map((promptText) => (
+                  <button
+                    key={promptText}
+                    type="button"
+                    onClick={() => {
+                      setInput(promptText);
+                      send(promptText);
+                    }}
+                    className="text-left text-xs bg-card border border-line hover:border-ink/40 text-ink px-3 py-2 rounded-xl transition-colors"
+                  >
+                    {promptText}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
 
         {messages.map((m) =>
           m.role === "user" ? (
             <div key={m.id} className="flex justify-end">
-              <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-chip px-4 py-3 text-sm leading-relaxed">
+              <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-ink text-paper px-4 py-3 text-sm leading-relaxed shadow-sm">
                 {m.text}
               </div>
             </div>
           ) : (
-            <div key={m.id}>{m.answer && <LegalAnswer answer={m.answer} compact onListen={() => handleListen(m.answer!.whatThisMeans)} />}</div>
+            <div key={m.id}>
+              {m.answer && (
+                <LegalAnswer answer={m.answer} compact onListen={() => handleListen(m.answer!.whatThisMeans)} />
+              )}
+            </div>
           )
         )}
 
         {sending && (
-          <div className="space-y-2">
-            <Skeleton className="h-6 w-2/3" />
-            <Skeleton className="h-24" />
+          <div className="space-y-3 p-4 rounded-2xl border border-line bg-card">
+            <Skeleton className="h-5 w-1/2" />
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-12 w-3/4" />
           </div>
         )}
         <div ref={bottomRef} />
@@ -80,32 +114,42 @@ export default function Ask() {
           e.preventDefault();
           send(input);
         }}
-        className="fixed bottom-0 left-0 right-0 px-5 pb-5 pt-3 bg-gradient-to-t from-paper via-paper/95 to-transparent"
+        className="sticky bottom-0 left-0 right-0 z-40 bg-paper border-t border-line px-3 py-2.5 shadow-md"
       >
-        <div className="mx-auto max-w-md flex items-center gap-2 rounded-full border border-line bg-card px-2 py-2 shadow-soft">
-          <button type="button" aria-label="Add attachment" className="h-9 w-9 rounded-full bg-ink text-paper flex items-center justify-center shrink-0">
-            <Plus size={16} />
+        <div className="mx-auto max-w-md flex items-center gap-1.5 rounded-full border border-line bg-card px-2.5 py-1.5 focus-within:border-ink transition-colors">
+          <button
+            type="button"
+            onClick={() => navigate("/upload")}
+            aria-label="Attach document"
+            title="Attach document"
+            className="h-9 w-9 rounded-full bg-chip text-ink flex items-center justify-center shrink-0 hover:bg-ink hover:text-paper transition-colors"
+          >
+            <Plus size={18} />
           </button>
           <input
+            autoFocus
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Describe your legal issue…"
-            className="flex-1 bg-transparent outline-none text-sm min-w-0"
+            placeholder="Type your legal issue here..."
+            style={{ outline: "none", border: "none", boxShadow: "none" }}
+            className="flex-1 bg-transparent text-sm min-w-0 text-ink placeholder:text-muted py-1 outline-none focus:outline-none focus:ring-0"
             disabled={sending}
           />
           <button
             type="button"
             onClick={() => navigate("/voice")}
             aria-label="Switch to voice"
-            className="h-9 shrink-0 rounded-full bg-ink text-paper px-3.5 flex items-center gap-1.5 text-xs font-semibold"
+            title="Voice Assistant"
+            className="h-9 w-9 rounded-full bg-chip text-ink hover:bg-ink hover:text-paper flex items-center justify-center shrink-0 transition-colors"
           >
-            <Mic size={13} /> Speak
+            <Mic size={17} />
           </button>
           <button
             type="submit"
             disabled={!input.trim() || sending}
-            aria-label="Send"
-            className="h-9 w-9 rounded-full bg-ink text-paper flex items-center justify-center shrink-0 disabled:opacity-40"
+            aria-label="Send question"
+            title="Send"
+            className="h-9 w-9 rounded-full bg-ink text-paper flex items-center justify-center shrink-0 disabled:opacity-30 transition-opacity"
           >
             <Send size={15} />
           </button>

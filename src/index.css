@@ -11,3 +11,13 @@ html, body, #root { height: 100%; }
   outline-offset: 2px;
   border-radius: 6px;
 }
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+input:focus,
+textarea:focus {
+  outline: none !important;
+  outline-offset: 0 !important;
+  box-shadow: none !important;
+}

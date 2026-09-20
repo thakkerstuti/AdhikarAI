@@ -20,7 +20,10 @@ import LanguageSelection from "@/pages/LanguageSelection";
 import OnboardingGuard from "@/components/OnboardingGuard";
 
 const HIDE_BOTTOM_NAV = [
+  "/ask",
   "/voice",
+  "/upload",
+  "/generate",
   "/onboarding",
   "/auth",
   "/auth/signup",
