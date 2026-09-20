@@ -73,6 +73,7 @@ export async function presignedDownloadUrl(key, expiresInSeconds = 900) {
     ) {
       return `https://${BUCKET_NAME}.s3.amazonaws.com/${key}?mock-presigned-download=true`;
     }
+    
     throw err;
   }
 }
